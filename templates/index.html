@@ -576,6 +576,11 @@
     </style>
 </head>
 <body>
+    <!-- Server status indicator (hidden by default) -->
+    <div id="serverStatus" style="display: none; text-align: center; padding: 5px; background: #ffc107; color: #333; border-radius: 5px; margin-bottom: 10px;">
+        ⚡ Server is waking up... First upload may take 60 seconds
+    </div>
+
     <div class="container">
         <div class="stats-banner">
             <div class="stat">
@@ -599,7 +604,7 @@
                 <div class="upload-content">
                     <div class="upload-icon">📄</div>
                     <h3>Upload Resume</h3>
-                    <p class="upload-text">PDF or DOCX (Max 10MB)</p>
+                    <p class="upload-text">PDF or DOCX (Max 50MB)</p>
                     <input type="file" id="fileInput" accept=".pdf,.docx" hidden>
                     <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
                         Choose File
@@ -659,13 +664,49 @@
         const fileInput = document.getElementById('fileInput');
         const analyzeBtn = document.getElementById('analyzeBtn');
         const uploadArea = document.getElementById('uploadArea');
+        const serverStatus = document.getElementById('serverStatus');
         let selectedFile = null;
+        let isServerAwake = false;
+
+        // ============================================
+        // FIX 1: Wake up server when page loads
+        // ============================================
+        async function wakeUpServer() {
+            serverStatus.style.display = 'block';
+            
+            try {
+                const baseUrl = window.location.origin;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch(`${baseUrl}/health`, {
+                    method: 'GET',
+                    signal: controller.signal,
+                    mode: 'cors',
+                    cache: 'no-cache'
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (response.ok) {
+                    isServerAwake = true;
+                    serverStatus.style.display = 'none';
+                    console.log('Server is awake');
+                }
+            } catch (error) {
+                console.log('Server waking up...');
+                // Keep status visible
+            }
+        }
+
+        // Call wakeUpServer when page loads
+        window.addEventListener('load', wakeUpServer);
 
         fileInput.addEventListener('change', function(e) {
             if (this.files && this.files[0]) {
                 selectedFile = this.files[0];
                 
-                // Check file size - increased to 50MB for mobile (Render limit is 50MB for free tier)
+                // Check file size - 50MB limit for mobile
                 if (selectedFile.size > 50 * 1024 * 1024) {
                     alert('File size must be less than 50MB');
                     return;
@@ -707,7 +748,7 @@
         });
 
         // ============================================
-        // FIXED: Mobile Connection Issue - Main Solution
+        // FIX 2: Modified analyzeResume with retry logic
         // ============================================
         async function analyzeResume() {
             if (!selectedFile) {
@@ -722,133 +763,128 @@
             resultsDiv.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
-                    <h3>Analyzing your resume...</h3>
-                    <p>This may take 30-60 seconds on mobile networks</p>
+                    <h3>${isServerAwake ? 'Analyzing...' : 'Waking up server...'}</h3>
+                    <p>${isServerAwake ? 'Processing your resume' : 'This may take 30-60 seconds'}</p>
                 </div>
             `;
             modal.style.display = 'block';
 
             analyzeBtn.disabled = true;
-            analyzeBtn.textContent = 'Analyzing...';
+            analyzeBtn.textContent = isServerAwake ? 'Analyzing...' : 'Waking server...';
 
             const formData = new FormData();
             formData.append('resume', selectedFile);
 
-            try {
-                // ============================================
-                // KEY FIX 1: Use dynamic base URL instead of hardcoded '/analyze'
-                // This prevents CORS issues on mobile
-                // ============================================
-                const baseUrl = window.location.origin;  // Gets https://your-app.onrender.com automatically
-                
-                // ============================================
-                // KEY FIX 2: Add timeout for slow mobile connections (60 seconds)
-                // ============================================
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+            // Try up to 3 times with increasing timeouts
+            const timeouts = [60000, 90000, 120000]; // 60s, 90s, 120s
+            let lastError = null;
 
-                const response = await fetch(`${baseUrl}/analyze`, {
-                    method: 'POST',
-                    body: formData,
-                    signal: controller.signal,  // Add abort signal for timeout
-                    // ============================================
-                    // KEY FIX 3: Explicit headers for mobile browsers
-                    // ============================================
-                    headers: {
-                        'Accept': 'application/json',
-                        // Don't set Content-Type header - browser will set it automatically with boundary
-                    },
-                    // ============================================
-                    // KEY FIX 4: Allow credentials and set mode
-                    // ============================================
-                    credentials: 'same-origin',
-                    mode: 'cors'  // Explicitly set CORS mode
-                });
+            for (let attempt = 0; attempt < timeouts.length; attempt++) {
+                try {
+                    // Update message for retry
+                    if (attempt > 0) {
+                        resultsDiv.innerHTML = `
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                <h3>Retrying... (Attempt ${attempt + 1}/${timeouts.length})</h3>
+                                <p>Server needs more time to respond</p>
+                            </div>
+                        `;
+                    }
 
-                clearTimeout(timeoutId); // Clear timeout if request completes
+                    const baseUrl = window.location.origin;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), timeouts[attempt]);
 
-                // ============================================
-                // KEY FIX 5: Better error handling for HTTP errors
-                // ============================================
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    const response = await fetch(`${baseUrl}/analyze`, {
+                        method: 'POST',
+                        body: formData,
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'application/json',
+                        },
+                        credentials: 'same-origin',
+                        mode: 'cors'
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+
+                    // Success! Server is definitely awake now
+                    isServerAwake = true;
+                    serverStatus.style.display = 'none';
+                    displayResults(data);
+                    return; // Exit function on success
+
+                } catch (error) {
+                    lastError = error;
+                    console.log(`Attempt ${attempt + 1} failed:`, error.message);
+                    
+                    // Wait before retrying (except on last attempt)
+                    if (attempt < timeouts.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                    }
                 }
-
-                const data = await response.json();
-
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-
-                displayResults(data);
-                
-            } catch (error) {
-                console.error('Mobile upload error:', error); // Log for debugging
-                
-                // ============================================
-                // FIXED: User-friendly error messages for mobile users
-                // ============================================
-                let errorMessage = error.message;
-                let errorTips = [];
-                
-                if (error.name === 'AbortError') {
-                    errorMessage = 'Request timed out';
-                    errorTips = [
-                        'Your connection might be slow',
-                        'Try with a smaller file (under 10MB)',
-                        'Switch to WiFi if possible'
-                    ];
-                } else if (error.message.includes('Failed to fetch')) {
-                    errorMessage = 'Network connection failed';
-                    errorTips = [
-                        'Check your internet connection',
-                        'Try switching between WiFi and mobile data',
-                        'The server might be starting up - wait a moment'
-                    ];
-                } else if (error.message.includes('413')) {
-                    errorMessage = 'File too large';
-                    errorTips = [
-                        'Maximum file size is 50MB',
-                        'Try compressing your PDF',
-                        'Use a smaller file'
-                    ];
-                } else if (error.message.includes('415')) {
-                    errorMessage = 'File type not supported';
-                    errorTips = [
-                        'Please upload PDF or DOCX files only',
-                        'Convert your file to PDF format'
-                    ];
-                }
-
-                resultsDiv.innerHTML = `
-                    <div style="text-align: center; padding: 30px 20px;">
-                        <div style="font-size: 4rem; margin-bottom: 20px;">📱</div>
-                        <h3 style="color: #f44336; margin-bottom: 15px;">${errorMessage}</h3>
-                        <div style="background: #f8f9ff; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: left;">
-                            <p style="font-weight: 600; margin-bottom: 10px; color: #333;">🔍 Troubleshooting Tips:</p>
-                            <ul style="list-style: none; padding-left: 0;">
-                                ${errorTips.map(tip => `
-                                    <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
-                                        <span style="position: absolute; left: 0; color: #667eea;">•</span>
-                                        ${tip}
-                                    </li>
-                                `).join('')}
-                                <li style="margin-bottom: 8px; padding-left: 20px; position: relative; margin-top: 10px;">
-                                    <span style="position: absolute; left: 0; color: #667eea;">•</span>
-                                    <strong>Error details:</strong> ${error.message}
-                                </li>
-                            </ul>
-                        </div>
-                        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                            <button onclick="closeModal()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
-                            <button onclick="analyzeResume()" style="padding: 12px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Try Again</button>
-                        </div>
-                    </div>
-                `;
-            } finally {
-                analyzeBtn.disabled = false;
-                analyzeBtn.textContent = 'Get My Free Analysis';
             }
+
+            // If all attempts failed
+            console.error('All upload attempts failed:', lastError);
+            
+            let errorMessage = 'Connection failed';
+            let errorTips = [];
+            
+            if (lastError.name === 'AbortError') {
+                errorMessage = 'Server is taking too long';
+                errorTips = [
+                    'Free tier servers take time to start',
+                    'Please try again and wait longer',
+                    'The first upload always takes the longest'
+                ];
+            } else if (lastError.message.includes('Failed to fetch')) {
+                errorMessage = 'Cannot reach the server';
+                errorTips = [
+                    'Check your internet connection',
+                    'Server might be starting up',
+                    'Wait 30 seconds and try again'
+                ];
+            } else {
+                errorMessage = lastError.message || 'Unknown error';
+                errorTips = ['Please try again'];
+            }
+
+            resultsDiv.innerHTML = `
+                <div style="text-align: center; padding: 30px 20px;">
+                    <div style="font-size: 4rem; margin-bottom: 20px;">😴</div>
+                    <h3 style="color: #f44336; margin-bottom: 15px;">${errorMessage}</h3>
+                    <div style="background: #f8f9ff; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: left;">
+                        <p style="font-weight: 600; margin-bottom: 10px; color: #333;">📱 Tips:</p>
+                        <ul style="list-style: none; padding-left: 0;">
+                            ${errorTips.map(tip => `
+                                <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
+                                    <span style="position: absolute; left: 0; color: #667eea;">•</span>
+                                    ${tip}
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                        <button onclick="closeModal()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                        <button onclick="analyzeResume()" style="padding: 12px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Try Again</button>
+                    </div>
+                </div>
+            `;
+
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = 'Get My Free Analysis';
         }
 
         function displayResults(data) {
@@ -991,11 +1027,16 @@
                     <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem;">Close</button>
                 </div>
             `;
+            
+            // Success - hide server status
+            serverStatus.style.display = 'none';
+            analyzeBtn.disabled = false;
+            analyzeBtn.textContent = 'Get My Free Analysis';
         }
 
         async function checkATS() {
             try {
-                const baseUrl = window.location.origin; // Same fix for check_ats endpoint
+                const baseUrl = window.location.origin;
                 const response = await fetch(`${baseUrl}/check_ats`);
                 const data = await response.json();
                 
@@ -1034,7 +1075,7 @@
                 modal.style.display = 'block';
                 
             } catch (error) {
-                alert('Error: ' + error.message);
+                alert('Server is starting up. Please wait 30 seconds and try again.');
             }
         }
 

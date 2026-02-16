@@ -5,6 +5,9 @@ import PyPDF2
 import docx
 import re
 import tempfile  
+import time
+import threading
+from datetime import datetime
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -13,6 +16,37 @@ CORS(app)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
+
+# ============================================
+# KEEP ALIVE FUNCTION - Prevents server from sleeping
+# ============================================
+def keep_alive():
+    """Background thread to keep server active"""
+    while True:
+        time.sleep(300)  # Every 5 minutes
+        try:
+            # Just print to keep the thread alive
+            print(f"[Keep Alive] Server active at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        except:
+            pass
+
+# Start keep-alive thread when app starts on Render
+if os.environ.get('RENDER') == 'true':
+    thread = threading.Thread(target=keep_alive, daemon=True)
+    thread.start()
+    print("✅ Keep-alive thread started - Server will not sleep")
+
+# ============================================
+# HEALTH CHECK ENDPOINT - For mobile wake-up
+# ============================================
+@app.route('/health', methods=['GET'])
+def health():
+    """Quick endpoint to wake up the server"""
+    return jsonify({
+        'status': 'awake',
+        'time': datetime.now().isoformat(),
+        'message': 'Server is ready to accept uploads'
+    }), 200
 
 # ATS Keywords Database
 ATS_DATA = {
@@ -451,4 +485,7 @@ if __name__ == '__main__':
     print("🚀 ATS Resume Analyzer Starting...")
     print(f"📁 Upload folder: {app.config['UPLOAD_FOLDER']}")
     print("✨ Ready to analyze resumes!")
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    
+    # Get port from environment variable (for Render) or use default
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
