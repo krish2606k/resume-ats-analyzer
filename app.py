@@ -1,16 +1,17 @@
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS  
 import os
 import PyPDF2
 import docx
 import re
+import tempfile  
 from werkzeug.utils import secure_filename
-from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)  
 
-# Configuration
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 
 # ATS Keywords Database
