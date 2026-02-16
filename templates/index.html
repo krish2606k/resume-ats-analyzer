@@ -665,9 +665,9 @@
             if (this.files && this.files[0]) {
                 selectedFile = this.files[0];
                 
-                // Check file size (10MB limit)
-                if (selectedFile.size > 10 * 1024 * 1024) {
-                    alert('File size must be less than 10MB');
+                // Check file size - increased to 50MB for mobile (Render limit is 50MB for free tier)
+                if (selectedFile.size > 50 * 1024 * 1024) {
+                    alert('File size must be less than 50MB');
                     return;
                 }
                 
@@ -706,6 +706,9 @@
             }
         });
 
+        // ============================================
+        // FIXED: Mobile Connection Issue - Main Solution
+        // ============================================
         async function analyzeResume() {
             if (!selectedFile) {
                 alert('Please select a file first');
@@ -715,11 +718,12 @@
             const modal = document.getElementById('resultsModal');
             const resultsDiv = document.getElementById('analysisResults');
             
+            // Show loading state
             resultsDiv.innerHTML = `
                 <div class="loading">
                     <div class="spinner"></div>
                     <h3>Analyzing your resume...</h3>
-                    <p>This will take just a few seconds</p>
+                    <p>This may take 30-60 seconds on mobile networks</p>
                 </div>
             `;
             modal.style.display = 'block';
@@ -731,32 +735,114 @@
             formData.append('resume', selectedFile);
 
             try {
-                const response = await fetch('/analyze', {
+                // ============================================
+                // KEY FIX 1: Use dynamic base URL instead of hardcoded '/analyze'
+                // This prevents CORS issues on mobile
+                // ============================================
+                const baseUrl = window.location.origin;  // Gets https://your-app.onrender.com automatically
+                
+                // ============================================
+                // KEY FIX 2: Add timeout for slow mobile connections (60 seconds)
+                // ============================================
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+
+                const response = await fetch(`${baseUrl}/analyze`, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: controller.signal,  // Add abort signal for timeout
+                    // ============================================
+                    // KEY FIX 3: Explicit headers for mobile browsers
+                    // ============================================
+                    headers: {
+                        'Accept': 'application/json',
+                        // Don't set Content-Type header - browser will set it automatically with boundary
+                    },
+                    // ============================================
+                    // KEY FIX 4: Allow credentials and set mode
+                    // ============================================
+                    credentials: 'same-origin',
+                    mode: 'cors'  // Explicitly set CORS mode
                 });
+
+                clearTimeout(timeoutId); // Clear timeout if request completes
+
+                // ============================================
+                // KEY FIX 5: Better error handling for HTTP errors
+                // ============================================
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    displayResults(data);
-                } else {
-                    resultsDiv.innerHTML = `
-                        <div style="text-align: center; padding: 40px;">
-                            <div style="font-size: 4rem; margin-bottom: 20px;">😕</div>
-                            <h3>Analysis Failed</h3>
-                            <p style="color: #f44336; margin: 20px 0;">${data.error || 'Unknown error occurred'}</p>
-                            <button onclick="closeModal()" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
-                        </div>
-                    `;
+                if (data.error) {
+                    throw new Error(data.error);
                 }
+
+                displayResults(data);
+                
             } catch (error) {
+                console.error('Mobile upload error:', error); // Log for debugging
+                
+                // ============================================
+                // FIXED: User-friendly error messages for mobile users
+                // ============================================
+                let errorMessage = error.message;
+                let errorTips = [];
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = 'Request timed out';
+                    errorTips = [
+                        'Your connection might be slow',
+                        'Try with a smaller file (under 10MB)',
+                        'Switch to WiFi if possible'
+                    ];
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network connection failed';
+                    errorTips = [
+                        'Check your internet connection',
+                        'Try switching between WiFi and mobile data',
+                        'The server might be starting up - wait a moment'
+                    ];
+                } else if (error.message.includes('413')) {
+                    errorMessage = 'File too large';
+                    errorTips = [
+                        'Maximum file size is 50MB',
+                        'Try compressing your PDF',
+                        'Use a smaller file'
+                    ];
+                } else if (error.message.includes('415')) {
+                    errorMessage = 'File type not supported';
+                    errorTips = [
+                        'Please upload PDF or DOCX files only',
+                        'Convert your file to PDF format'
+                    ];
+                }
+
                 resultsDiv.innerHTML = `
-                    <div style="text-align: center; padding: 40px;">
-                        <div style="font-size: 4rem; margin-bottom: 20px;">❌</div>
-                        <h3>Connection Error</h3>
-                        <p style="color: #f44336; margin: 20px 0;">${error.message}</p>
-                        <button onclick="closeModal()" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                    <div style="text-align: center; padding: 30px 20px;">
+                        <div style="font-size: 4rem; margin-bottom: 20px;">📱</div>
+                        <h3 style="color: #f44336; margin-bottom: 15px;">${errorMessage}</h3>
+                        <div style="background: #f8f9ff; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: left;">
+                            <p style="font-weight: 600; margin-bottom: 10px; color: #333;">🔍 Troubleshooting Tips:</p>
+                            <ul style="list-style: none; padding-left: 0;">
+                                ${errorTips.map(tip => `
+                                    <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
+                                        <span style="position: absolute; left: 0; color: #667eea;">•</span>
+                                        ${tip}
+                                    </li>
+                                `).join('')}
+                                <li style="margin-bottom: 8px; padding-left: 20px; position: relative; margin-top: 10px;">
+                                    <span style="position: absolute; left: 0; color: #667eea;">•</span>
+                                    <strong>Error details:</strong> ${error.message}
+                                </li>
+                            </ul>
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
+                            <button onclick="closeModal()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                            <button onclick="analyzeResume()" style="padding: 12px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Try Again</button>
+                        </div>
                     </div>
                 `;
             } finally {
@@ -811,7 +897,7 @@
             if (data.recommendations && data.recommendations.length > 0) {
                 data.recommendations.forEach(rec => {
                     const priorityClass = rec.priority === 'Critical' || rec.priority === 'High' ? 'priority-high' : 
-                                         rec.priority === 'Medium' ? 'priority-medium' : 'priority-low';
+                                        rec.priority === 'Medium' ? 'priority-medium' : 'priority-low';
                     
                     recommendationsHtml += `
                         <div class="recommendation-item ${priorityClass}">
@@ -909,7 +995,8 @@
 
         async function checkATS() {
             try {
-                const response = await fetch('/check_ats');
+                const baseUrl = window.location.origin; // Same fix for check_ats endpoint
+                const response = await fetch(`${baseUrl}/check_ats`);
                 const data = await response.json();
                 
                 let tipsHtml = '';
