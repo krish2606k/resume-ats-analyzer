@@ -18,14 +18,14 @@ app.config['UPLOAD_FOLDER'] = tempfile.gettempdir()
 ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 
 # ============================================
-# KEEP ALIVE FUNCTION - Prevents server from sleeping
+# FIX 1: KEEP ALIVE FUNCTION - Prevents server from sleeping
 # ============================================
 def keep_alive():
     """Background thread to keep server active"""
     while True:
-        time.sleep(300)  # Every 5 minutes
+        time.sleep(240)  # Every 4 minutes (Render free tier sleeps after 5 min)
         try:
-            # Just print to keep the thread alive
+            # This keeps the server active
             print(f"[Keep Alive] Server active at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         except:
             pass
@@ -37,7 +37,7 @@ if os.environ.get('RENDER') == 'true':
     print("✅ Keep-alive thread started - Server will not sleep")
 
 # ============================================
-# HEALTH CHECK ENDPOINT - For mobile wake-up
+# FIX 2: HEALTH CHECK ENDPOINT - For mobile wake-up
 # ============================================
 @app.route('/health', methods=['GET'])
 def health():
@@ -45,8 +45,30 @@ def health():
     return jsonify({
         'status': 'awake',
         'time': datetime.now().isoformat(),
-        'message': 'Server is ready to accept uploads'
+        'message': 'Server is ready to accept uploads',
+        'active_threads': threading.active_count()
     }), 200
+
+# ============================================
+# FIX 3: OPTIONS method for CORS preflight (Mobile browsers need this)
+# ============================================
+@app.route('/analyze', methods=['OPTIONS'])
+def handle_options():
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Accept')
+    response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+    response.headers.add('Access-Control-Max-Age', '3600')
+    return response
+
+@app.route('/check_ats', methods=['OPTIONS'])
+def handle_options_check():
+    response = jsonify({'status': 'ok'})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Accept')
+    response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+    response.headers.add('Access-Control-Max-Age', '3600')
+    return response
 
 # ATS Keywords Database
 ATS_DATA = {
@@ -389,8 +411,15 @@ def generate_recommendations(analysis, text):
 def index():
     return render_template('index.html')
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/analyze', methods=['POST', 'OPTIONS'])  # Added OPTIONS method
 def analyze():
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        return response
+
     if 'resume' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     
@@ -441,14 +470,24 @@ def analyze():
             'action_verbs': ATS_DATA['action_verbs'][:10]
         }
         
-        return jsonify(analysis)
+        # Add CORS headers to response
+        response = jsonify(analysis)
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        return response
     
     except Exception as e:
         return jsonify({'error': f'Analysis failed: {str(e)}'}), 500
 
-@app.route('/check_ats', methods=['GET'])
+@app.route('/check_ats', methods=['GET', 'OPTIONS'])  # Added OPTIONS method
 def check_ats():
-    return jsonify({
+    if request.method == 'OPTIONS':
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Accept')
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        return response
+
+    response = jsonify({
         'message': "🔍 Amazon ATS (Applicant Tracking System) Test",
         'tips': [
             {
@@ -480,6 +519,9 @@ def check_ats():
             }
         ]
     })
+    
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 if __name__ == '__main__':
     print("🚀 ATS Resume Analyzer Starting...")

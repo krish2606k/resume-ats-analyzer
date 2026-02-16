@@ -661,434 +661,291 @@
     </div>
 
     <script>
-        const fileInput = document.getElementById('fileInput');
-        const analyzeBtn = document.getElementById('analyzeBtn');
-        const uploadArea = document.getElementById('uploadArea');
-        const serverStatus = document.getElementById('serverStatus');
-        let selectedFile = null;
-        let isServerAwake = false;
+    const fileInput = document.getElementById('fileInput');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const uploadArea = document.getElementById('uploadArea');
+    let selectedFile = null;
+    let isServerReady = false;
 
-        // ============================================
-        // FIX 1: Wake up server when page loads
-        // ============================================
-        async function wakeUpServer() {
-            serverStatus.style.display = 'block';
-            
-            try {
-                const baseUrl = window.location.origin;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000);
-                
-                const response = await fetch(`${baseUrl}/health`, {
-                    method: 'GET',
-                    signal: controller.signal,
-                    mode: 'cors',
-                    cache: 'no-cache'
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (response.ok) {
-                    isServerAwake = true;
-                    serverStatus.style.display = 'none';
-                    console.log('Server is awake');
+    // ============================================
+    // FIX 1: Check server health on page load
+    // ============================================
+    async function checkServerHealth() {
+        const statusDiv = document.createElement('div');
+        statusDiv.id = 'serverStatus';
+        statusDiv.style.cssText = `
+            text-align: center;
+            padding: 8px;
+            background: #ffc107;
+            color: #333;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        `;
+        statusDiv.innerHTML = '⏳ Checking server connection...';
+        
+        const container = document.querySelector('.container');
+        container.insertBefore(statusDiv, container.firstChild);
+
+        try {
+            const baseUrl = window.location.origin;
+            // Try up to 5 times to wake server
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000);
+                    
+                    const response = await fetch(`${baseUrl}/health`, {
+                        method: 'GET',
+                        signal: controller.signal,
+                        cache: 'no-cache',
+                        headers: { 'Cache-Control': 'no-cache' }
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        statusDiv.innerHTML = '✅ Server connected! Ready to analyze.';
+                        statusDiv.style.background = '#4caf50';
+                        statusDiv.style.color = 'white';
+                        setTimeout(() => statusDiv.remove(), 3000);
+                        isServerReady = true;
+                        return;
+                    }
+                } catch (error) {
+                    console.log(`Health check attempt ${i + 1} failed`);
+                    statusDiv.innerHTML = `⏳ Waking server... attempt ${i + 1}/5`;
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                 }
-            } catch (error) {
-                console.log('Server waking up...');
-                // Keep status visible
             }
+            
+            statusDiv.innerHTML = '⚠️ Server is slow. Upload may take 60 seconds.';
+            statusDiv.style.background = '#ff9800';
+        } catch (error) {
+            console.log('Health check error:', error);
+        }
+    }
+
+    // ============================================
+    // FIX 2: Direct fetch with proper CORS headers
+    // ============================================
+    async function analyzeResume() {
+        if (!selectedFile) {
+            alert('Please select a file first');
+            return;
         }
 
-        // Call wakeUpServer when page loads
-        window.addEventListener('load', wakeUpServer);
+        const modal = document.getElementById('resultsModal');
+        const resultsDiv = document.getElementById('analysisResults');
+        
+        resultsDiv.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <h3>${isServerReady ? 'Uploading...' : 'Connecting to server...'}</h3>
+                <p>${isServerReady ? 'Processing your resume' : 'This may take 30-60 seconds'}</p>
+            </div>
+        `;
+        modal.style.display = 'block';
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = 'Please wait...';
 
-        fileInput.addEventListener('change', function(e) {
-            if (this.files && this.files[0]) {
-                selectedFile = this.files[0];
-                
-                // Check file size - 50MB limit for mobile
-                if (selectedFile.size > 50 * 1024 * 1024) {
-                    alert('File size must be less than 50MB');
-                    return;
-                }
-                
-                uploadArea.classList.add('file-selected');
-                analyzeBtn.disabled = false;
-                
-                const uploadContent = uploadArea.querySelector('.upload-content');
-                uploadContent.innerHTML = `
-                    <div class="upload-icon">✅</div>
-                    <h3>${selectedFile.name}</h3>
-                    <p class="upload-text">${(selectedFile.size / 1024).toFixed(1)} KB</p>
-                    <button class="upload-btn" onclick="event.preventDefault(); document.getElementById('fileInput').click()">
-                        Change File
-                    </button>
-                `;
-            }
-        });
+        const formData = new FormData();
+        formData.append('resume', selectedFile);
+        const baseUrl = window.location.origin;
 
-        uploadArea.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        });
-
-        uploadArea.addEventListener('dragleave', () => {
-            uploadArea.classList.remove('dragover');
-        });
-
-        uploadArea.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
+        try {
+            // FIX: Use XMLHttpRequest instead of fetch for better mobile support
+            const xhr = new XMLHttpRequest();
             
-            if (e.dataTransfer.files.length) {
-                fileInput.files = e.dataTransfer.files;
-                const event = new Event('change');
-                fileInput.dispatchEvent(event);
-            }
-        });
-
-        // ============================================
-        // FIX 2: Modified analyzeResume with retry logic
-        // ============================================
-        async function analyzeResume() {
-            if (!selectedFile) {
-                alert('Please select a file first');
-                return;
-            }
-
-            const modal = document.getElementById('resultsModal');
-            const resultsDiv = document.getElementById('analysisResults');
-            
-            // Show loading state
-            resultsDiv.innerHTML = `
-                <div class="loading">
-                    <div class="spinner"></div>
-                    <h3>${isServerAwake ? 'Analyzing...' : 'Waking up server...'}</h3>
-                    <p>${isServerAwake ? 'Processing your resume' : 'This may take 30-60 seconds'}</p>
-                </div>
-            `;
-            modal.style.display = 'block';
-
-            analyzeBtn.disabled = true;
-            analyzeBtn.textContent = isServerAwake ? 'Analyzing...' : 'Waking server...';
-
-            const formData = new FormData();
-            formData.append('resume', selectedFile);
-
-            // Try up to 3 times with increasing timeouts
-            const timeouts = [60000, 90000, 120000]; // 60s, 90s, 120s
-            let lastError = null;
-
-            for (let attempt = 0; attempt < timeouts.length; attempt++) {
-                try {
-                    // Update message for retry
-                    if (attempt > 0) {
-                        resultsDiv.innerHTML = `
-                            <div class="loading">
-                                <div class="spinner"></div>
-                                <h3>Retrying... (Attempt ${attempt + 1}/${timeouts.length})</h3>
-                                <p>Server needs more time to respond</p>
-                            </div>
-                        `;
-                    }
-
-                    const baseUrl = window.location.origin;
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), timeouts[attempt]);
-
-                    const response = await fetch(`${baseUrl}/analyze`, {
-                        method: 'POST',
-                        body: formData,
-                        signal: controller.signal,
-                        headers: {
-                            'Accept': 'application/json',
-                        },
-                        credentials: 'same-origin',
-                        mode: 'cors'
-                    });
-
-                    clearTimeout(timeoutId);
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-
-                    const data = await response.json();
-
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-
-                    // Success! Server is definitely awake now
-                    isServerAwake = true;
-                    serverStatus.style.display = 'none';
-                    displayResults(data);
-                    return; // Exit function on success
-
-                } catch (error) {
-                    lastError = error;
-                    console.log(`Attempt ${attempt + 1} failed:`, error.message);
-                    
-                    // Wait before retrying (except on last attempt)
-                    if (attempt < timeouts.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                    }
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    resultsDiv.innerHTML = `
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <h3>Uploading... ${percent}%</h3>
+                            <p>Please wait</p>
+                        </div>
+                    `;
                 }
-            }
+            });
 
-            // If all attempts failed
-            console.error('All upload attempts failed:', lastError);
+            const uploadPromise = new Promise((resolve, reject) => {
+                xhr.open('POST', `${baseUrl}/analyze`, true);
+                xhr.setRequestHeader('Accept', 'application/json');
+                xhr.timeout = 120000; // 2 minutes timeout
+                
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            resolve(data);
+                        } catch (e) {
+                            reject(new Error('Invalid response'));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}`));
+                    }
+                };
+                
+                xhr.onerror = () => reject(new Error('Network failed'));
+                xhr.ontimeout = () => reject(new Error('Timeout'));
+                xhr.send(formData);
+            });
+
+            const data = await uploadPromise;
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            displayResults(data);
+            isServerReady = true;
+
+        } catch (error) {
+            console.error('Upload error:', error);
             
             let errorMessage = 'Connection failed';
-            let errorTips = [];
-            
-            if (lastError.name === 'AbortError') {
-                errorMessage = 'Server is taking too long';
-                errorTips = [
-                    'Free tier servers take time to start',
-                    'Please try again and wait longer',
-                    'The first upload always takes the longest'
-                ];
-            } else if (lastError.message.includes('Failed to fetch')) {
-                errorMessage = 'Cannot reach the server';
-                errorTips = [
-                    'Check your internet connection',
-                    'Server might be starting up',
-                    'Wait 30 seconds and try again'
-                ];
-            } else {
-                errorMessage = lastError.message || 'Unknown error';
-                errorTips = ['Please try again'];
-            }
+            let errorTips = [
+                'Server is waking up (takes 30-60 seconds)',
+                'Click "Try Again" and wait',
+                'First upload always takes longer'
+            ];
 
             resultsDiv.innerHTML = `
                 <div style="text-align: center; padding: 30px 20px;">
-                    <div style="font-size: 4rem; margin-bottom: 20px;">😴</div>
+                    <div style="font-size: 4rem; margin-bottom: 20px;">📱</div>
                     <h3 style="color: #f44336; margin-bottom: 15px;">${errorMessage}</h3>
-                    <div style="background: #f8f9ff; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: left;">
-                        <p style="font-weight: 600; margin-bottom: 10px; color: #333;">📱 Tips:</p>
+                    <div style="background: #f8f9ff; padding: 20px; border-radius: 12px; margin: 20px 0;">
+                        <p style="font-weight: 600; margin-bottom: 10px;">🔍 Tips:</p>
                         <ul style="list-style: none; padding-left: 0;">
                             ${errorTips.map(tip => `
-                                <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
-                                    <span style="position: absolute; left: 0; color: #667eea;">•</span>
-                                    ${tip}
-                                </li>
+                                <li style="margin-bottom: 8px; padding-left: 20px;">• ${tip}</li>
                             `).join('')}
                         </ul>
                     </div>
-                    <div style="display: flex; gap: 10px; justify-content: center; margin-top: 20px;">
-                        <button onclick="closeModal()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
-                        <button onclick="analyzeResume()" style="padding: 12px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Try Again</button>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button onclick="closeModal()" style="padding: 12px 30px; background: #666; color: white; border: none; border-radius: 8px;">Close</button>
+                        <button onclick="analyzeResume()" style="padding: 12px 30px; background: #667eea; color: white; border: none; border-radius: 8px;">Try Again</button>
                     </div>
                 </div>
             `;
-
+        } finally {
             analyzeBtn.disabled = false;
             analyzeBtn.textContent = 'Get My Free Analysis';
         }
+    }
 
-        function displayResults(data) {
-            const resultsDiv = document.getElementById('analysisResults');
-            
-            // Category scores HTML
-            let categoryScoresHtml = '';
-            if (data.category_scores) {
-                for (let [category, score] of Object.entries(data.category_scores)) {
-                    const categoryName = category.replace('_', ' ').toUpperCase();
-                    categoryScoresHtml += `
-                        <div class="category-item">
-                            <div class="category-header">
-                                <span class="category-name">${categoryName}</span>
-                                <span class="category-percent">${score}%</span>
-                            </div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" style="width: ${score}%"></div>
-                            </div>
-                        </div>
-                    `;
-                }
-            }
+    // ============================================
+    // FIX 3: Modified checkATS with XMLHttpRequest
+    // ============================================
+    async function checkATS() {
+        const modal = document.getElementById('resultsModal');
+        const resultsDiv = document.getElementById('analysisResults');
+        
+        resultsDiv.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <h3>Loading tips...</h3>
+            </div>
+        `;
+        modal.style.display = 'block';
 
-            // Keywords found HTML
-            let keywordsHtml = '';
-            if (data.found_keywords) {
-                for (let [category, keywords] of Object.entries(data.found_keywords)) {
-                    if (keywords && keywords.length > 0) {
-                        const categoryName = category.replace('_', ' ').toUpperCase();
-                        keywordsHtml += `
-                            <div class="keyword-box">
-                                <h4>${categoryName}</h4>
-                                <div class="keyword-tags">
-                                    ${keywords.slice(0, 15).map(k => `<span class="keyword-tag">${k}</span>`).join('')}
-                                    ${keywords.length > 15 ? `<span class="keyword-tag">+${keywords.length - 15} more</span>` : ''}
-                                </div>
-                            </div>
-                        `;
-                    }
-                }
-            }
-
-            // Recommendations HTML
-            let recommendationsHtml = '';
-            if (data.recommendations && data.recommendations.length > 0) {
-                data.recommendations.forEach(rec => {
-                    const priorityClass = rec.priority === 'Critical' || rec.priority === 'High' ? 'priority-high' : 
-                                        rec.priority === 'Medium' ? 'priority-medium' : 'priority-low';
+        const baseUrl = window.location.origin;
+        const xhr = new XMLHttpRequest();
+        
+        xhr.open('GET', `${baseUrl}/check_ats`, true);
+        xhr.timeout = 30000;
+        
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                try {
+                    const data = JSON.parse(xhr.responseText);
+                    let tipsHtml = '';
                     
-                    recommendationsHtml += `
-                        <div class="recommendation-item ${priorityClass}">
-                            <div class="rec-category">${rec.category} (${rec.priority} Priority)</div>
-                            <div class="rec-message">${rec.message}</div>
-                            <div class="rec-examples">
-                                ${rec.examples.map(ex => `<span class="example-tag">${ex}</span>`).join('')}
-                            </div>
+                    if (data.tips) {
+                        data.tips.forEach(section => {
+                            tipsHtml += `
+                                <div style="margin-bottom: 20px;">
+                                    <h4 style="color: #333;">${section.title}</h4>
+                                    <ul style="list-style: none; padding-left: 0;">
+                                        ${section.items.map(item => `
+                                            <li style="margin-bottom: 8px; padding-left: 20px;">• ${item}</li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            `;
+                        });
+                    }
+
+                    resultsDiv.innerHTML = `
+                        <div class="results-header">
+                            <h2>${data.message || 'Amazon ATS Test Tips'}</h2>
+                        </div>
+                        ${tipsHtml}
+                        <div style="text-align: center;">
+                            <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px;">Close</button>
                         </div>
                     `;
-                });
+                } catch (e) {
+                    resultsDiv.innerHTML = `<p style="color: red;">Error loading tips</p>`;
+                }
+            } else {
+                resultsDiv.innerHTML = `<p style="color: red;">Server not ready. Try again in 30 seconds.</p>`;
             }
-
-            // Contact info HTML
-            let contactHtml = '';
-            if (data.contact_info) {
-                contactHtml = `
-                    <div class="keyword-box">
-                        <h4>CONTACT INFORMATION</h4>
-                        <div style="margin-bottom: 10px;">
-                            <strong>Email:</strong> ${data.contact_info.email.length ? data.contact_info.email.join(', ') : '❌ Not found'}
-                        </div>
-                        <div style="margin-bottom: 5px;">
-                            <strong>Phone:</strong> ${data.contact_info.phone.length ? data.contact_info.phone[0] : '❌ Not found'}
-                        </div>
-                        <div style="margin-bottom: 5px;">
-                            <strong>LinkedIn:</strong> ${data.contact_info.linkedin ? '✅ Found' : '❌ Not found'}
-                        </div>
-                        <div style="margin-bottom: 5px;">
-                            <strong>GitHub:</strong> ${data.contact_info.github ? '✅ Found' : '❌ Not found'}
-                        </div>
-                    </div>
-                `;
-            }
-
-            // Rating class
-            const ratingClass = `rating-${data.rating ? data.rating.replace(' ', '') : 'Average'}`;
-
+        };
+        
+        xhr.onerror = function() {
             resultsDiv.innerHTML = `
-                <div class="results-header">
-                    <h2>Your Resume Analysis Results</h2>
-                    <div class="score-circle">
-                        <span class="score-number">${data.final_score}</span>
-                        <span class="score-label">ATS Score</span>
-                    </div>
-                    <div class="rating-badge ${ratingClass}">
-                        ${data.rating || 'Average'} - ${data.rating_description || ''}
-                    </div>
-                </div>
-
-                <div class="results-grid">
-                    <div class="stat-card">
-                        <span class="stat-value-large">${data.keyword_counts ? data.keyword_counts.total : 0}</span>
-                        <span class="stat-label-small">Keywords Found</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-value-large">${data.word_count || 0}</span>
-                        <span class="stat-label-small">Total Words</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-value-large">${data.contact_score || 0}/10</span>
-                        <span class="stat-label-small">Contact Score</span>
-                    </div>
-                </div>
-
-                <div class="category-scores">
-                    <h3 style="margin-bottom: 15px;">📊 Category Performance</h3>
-                    ${categoryScoresHtml}
-                </div>
-
-                <div class="keywords-section">
-                    <h3 style="margin-bottom: 15px;">🔑 Keywords Found</h3>
-                    <div class="keywords-grid">
-                        ${keywordsHtml || '<p>No keywords found. Add more relevant terms.</p>'}
-                    </div>
-                </div>
-
-                <div class="keywords-section">
-                    <h3 style="margin-bottom: 15px;">📞 Contact Information</h3>
-                    <div class="keywords-grid">
-                        ${contactHtml}
-                    </div>
-                </div>
-
-                <div class="recommendations-section">
-                    <h3 style="margin-bottom: 15px;">💡 Recommendations to Improve</h3>
-                    ${recommendationsHtml || '<p>No recommendations available.</p>'}
-                </div>
-
-                <div style="text-align: center; margin-top: 30px;">
-                    <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem;">Close</button>
+                <div style="text-align: center; padding: 40px;">
+                    <h3 style="color: #f44336;">Server is waking up</h3>
+                    <p>Please wait 30 seconds and try again</p>
+                    <button onclick="closeModal()" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 8px; margin-top: 20px;">Close</button>
                 </div>
             `;
+        };
+        
+        xhr.send();
+    }
+
+    // Start health check when page loads
+    window.addEventListener('load', checkServerHealth);
+
+    // Existing file input code remains same...
+    fileInput.addEventListener('change', function(e) {
+        if (this.files && this.files[0]) {
+            selectedFile = this.files[0];
             
-            // Success - hide server status
-            serverStatus.style.display = 'none';
+            if (selectedFile.size > 50 * 1024 * 1024) {
+                alert('File size must be less than 50MB');
+                return;
+            }
+            
+            uploadArea.classList.add('file-selected');
             analyzeBtn.disabled = false;
-            analyzeBtn.textContent = 'Get My Free Analysis';
+            
+            const uploadContent = uploadArea.querySelector('.upload-content');
+            uploadContent.innerHTML = `
+                <div class="upload-icon">✅</div>
+                <h3>${selectedFile.name}</h3>
+                <p class="upload-text">${(selectedFile.size / 1024).toFixed(1)} KB</p>
+                <button class="upload-btn" onclick="event.preventDefault(); document.getElementById('fileInput').click()">
+                    Change File
+                </button>
+            `;
         }
+    });
 
-        async function checkATS() {
-            try {
-                const baseUrl = window.location.origin;
-                const response = await fetch(`${baseUrl}/check_ats`);
-                const data = await response.json();
-                
-                let tipsHtml = '';
-                if (data.tips) {
-                    data.tips.forEach(section => {
-                        tipsHtml += `
-                            <div style="margin-bottom: 20px;">
-                                <h4 style="color: #333; margin-bottom: 10px;">${section.title}</h4>
-                                <ul style="list-style: none; padding-left: 0;">
-                                    ${section.items.map(item => `
-                                        <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
-                                            <span style="position: absolute; left: 0; color: #667eea;">•</span>
-                                            ${item}
-                                        </li>
-                                    `).join('')}
-                                </ul>
-                            </div>
-                        `;
-                    });
-                }
+    function closeModal() {
+        document.getElementById('resultsModal').style.display = 'none';
+    }
 
-                const modal = document.getElementById('resultsModal');
-                const resultsDiv = document.getElementById('analysisResults');
-                
-                resultsDiv.innerHTML = `
-                    <div class="results-header">
-                        <h2>${data.message || 'Amazon ATS Test Tips'}</h2>
-                    </div>
-                    ${tipsHtml}
-                    <div style="text-align: center; margin-top: 30px;">
-                        <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
-                    </div>
-                `;
-                
-                modal.style.display = 'block';
-                
-            } catch (error) {
-                alert('Server is starting up. Please wait 30 seconds and try again.');
-            }
+    window.onclick = function(event) {
+        const modal = document.getElementById('resultsModal');
+        if (event.target == modal) {
+            modal.style.display = 'none';
         }
-
-        function closeModal() {
-            document.getElementById('resultsModal').style.display = 'none';
-        }
-
-        window.onclick = function(event) {
-            const modal = document.getElementById('resultsModal');
-            if (event.target == modal) {
-                modal.style.display = 'none';
-            }
-        }
-    </script>
+    }
+</script>
 </body>
 </html>
