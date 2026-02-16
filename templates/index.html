@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATS Resume Analyzer - Check if robots reject your resume</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .stats-banner {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+            animation: slideDown 0.5s ease;
+        }
+
+        .stat-value {
+            font-size: 3rem;
+            font-weight: 800;
+            color: white;
+            display: block;
+            line-height: 1;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1rem;
+        }
+
+        .main-card {
+            background: white;
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.5s ease;
+        }
+
+        .main-title {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
+        .highlight {
+            color: #667eea;
+            font-weight: 600;
+            background: #e8eaff;
+            padding: 2px 8px;
+            border-radius: 20px;
+        }
+
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+            background: #fafafa;
+        }
+
+        .upload-area:hover, .upload-area.dragover {
+            border-color: #667eea;
+            background: #f8f9ff;
+            transform: scale(1.02);
+        }
+
+        .upload-area.file-selected {
+            border-color: #4caf50;
+            background: #f0f9f0;
+        }
+
+        .upload-icon {
+            font-size: 4rem;
+            margin-bottom: 15px;
+        }
+
+        .upload-content h3 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 1.3rem;
+        }
+
+        .upload-text {
+            color: #999;
+            font-size: 0.95rem;
+            margin-bottom: 20px;
+        }
+
+        .upload-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 35px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+        }
+
+        .analyze-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e53 100%);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+        }
+
+        .analyze-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.5);
+        }
+
+        .analyze-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .security-badges {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 30px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 50px;
+        }
+
+        .badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #555;
+            font-size: 0.95rem;
+            font-weight: 500;
+        }
+
+        .badge-icon {
+            font-size: 1.3rem;
+        }
+
+        .testimonial {
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f2ff 100%);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 30px;
+            border-left: 4px solid #667eea;
+        }
+
+        .testimonial-text {
+            color: #333;
+            font-style: italic;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            font-size: 1.1rem;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .author-avatar {
+            width: 45px;
+            height: 45px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.5rem;
+        }
+
+        .author-name {
+            font-weight: 700;
+            color: #333;
+        }
+
+        .author-title {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .ats-test {
+            text-align: center;
+            padding: 20px;
+            background: #fff3e0;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .ats-test:hover {
+            background: #ffe4bc;
+            transform: translateY(-2px);
+        }
+
+        .ats-question {
+            color: #333;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+
+        .amazon-highlight {
+            color: #ff9900;
+            font-weight: 800;
+            font-size: 1.3rem;
+        }
+
+        .find-out-btn {
+            background: none;
+            border: none;
+            color: #667eea;
+            font-weight: 700;
+            font-size: 1.1rem;
+            cursor: pointer;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: white;
+            margin: 30px auto;
+            padding: 40px;
+            max-width: 800px;
+            border-radius: 24px;
+            position: relative;
+            animation: modalSlideIn 0.4s ease;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            font-size: 2rem;
+            cursor: pointer;
+            color: #999;
+            transition: color 0.3s ease;
+        }
+
+        .close-btn:hover {
+            color: #333;
+        }
+
+        /* Results Styles */
+        .results-header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .score-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 20px auto;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+        }
+
+        .score-number {
+            font-size: 3.5rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .score-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+
+        .rating-badge {
+            display: inline-block;
+            padding: 8px 20px;
+            border-radius: 50px;
+            font-weight: 700;
+            margin-top: 10px;
+        }
+
+        .rating-Excellent { background: #4caf50; color: white; }
+        .rating-Very { background: #2196f3; color: white; }
+        .rating-Good { background: #ff9800; color: white; }
+        .rating-Average { background: #ffc107; color: #333; }
+        .rating-Below { background: #f44336; color: white; }
+        .rating-Poor { background: #9c27b0; color: white; }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value-large {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #667eea;
+            display: block;
+        }
+
+        .stat-label-small {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .category-scores {
+            margin-bottom: 30px;
+        }
+
+        .category-item {
+            margin-bottom: 15px;
+        }
+
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+
+        .category-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .category-percent {
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #f0f0f0;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .keywords-section {
+            margin-bottom: 30px;
+        }
+
+        .keywords-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .keyword-box {
+            background: #f8f9ff;
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .keyword-box h4 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1rem;
+        }
+
+        .keyword-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .keyword-tag {
+            background: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #667eea;
+            border: 1px solid #667eea;
+        }
+
+        .recommendations-section {
+            margin-top: 30px;
+        }
+
+        .recommendation-item {
+            background: #fff3e0;
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ff9800;
+        }
+
+        .rec-category {
+            font-weight: 700;
+            color: #ff9800;
+            margin-bottom: 5px;
+        }
+
+        .rec-message {
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .rec-examples {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .example-tag {
+            background: white;
+            padding: 2px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .priority-high { border-left-color: #f44336; }
+        .priority-medium { border-left-color: #ff9800; }
+        .priority-low { border-left-color: #4caf50; }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(30px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .main-card {
+                padding: 20px;
+            }
+
+            .main-title {
+                font-size: 2rem;
+            }
+
+            .security-badges {
+                flex-direction: column;
+                gap: 10px;
+                border-radius: 20px;
+            }
+
+            .modal-content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="stats-banner">
+            <div class="stat">
+                <span class="stat-value">75%</span>
+                <span class="stat-label">of resumes are rejected by robots</span>
+            </div>
+        </div>
+
+        <div class="main-card">
+            <h1 class="main-title">
+                Is yours <span class="gradient-text">one of them?</span>
+            </h1>
+            
+            <p class="subtitle">
+                Our program, trained on thousands of successful resumes from 
+                <span class="highlight">Google, Amazon, and Microsoft</span>, 
+                will analyze your resume and provide recommendations in under 30 seconds.
+            </p>
+
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-content">
+                    <div class="upload-icon">📄</div>
+                    <h3>Upload Resume</h3>
+                    <p class="upload-text">PDF or DOCX (Max 10MB)</p>
+                    <input type="file" id="fileInput" accept=".pdf,.docx" hidden>
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                        Choose File
+                    </button>
+                </div>
+            </div>
+
+            <button class="analyze-btn" id="analyzeBtn" onclick="analyzeResume()" disabled>
+                Get My Free Analysis
+            </button>
+
+            <div class="security-badges">
+                <div class="badge">
+                    <span class="badge-icon">🔒</span>
+                    SSL Secured
+                </div>
+                <div class="badge">
+                    <span class="badge-icon">🛡️</span>
+                    100% Data Privacy
+                </div>
+                <div class="badge">
+                    <span class="badge-icon">⚡</span>
+                    Results in 30 sec
+                </div>
+            </div>
+
+            <div class="testimonial">
+                <p class="testimonial-text">
+                    "I went from 0 interviews to 3 offers in 2 weeks. This tool showed me I was getting filtered out by ATS."
+                </p>
+                <div class="testimonial-author">
+                    <div class="author-avatar">👤</div>
+                    <div>
+                        <div class="author-name">Aravind</div>
+                        <div class="author-title">Project Manager at Tech Corp</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ats-test" onclick="checkATS()">
+                <p class="ats-question">
+                    Can your resume pass the <span class="amazon-highlight">2026 Amazon ATS test?</span>
+                </p>
+                <button class="find-out-btn">Find out now →</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="resultsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeModal()">&times;</span>
+            <div id="analysisResults"></div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const uploadArea = document.getElementById('uploadArea');
+        let selectedFile = null;
+
+        fileInput.addEventListener('change', function(e) {
+            if (this.files && this.files[0]) {
+                selectedFile = this.files[0];
+                
+                // Check file size (10MB limit)
+                if (selectedFile.size > 10 * 1024 * 1024) {
+                    alert('File size must be less than 10MB');
+                    return;
+                }
+                
+                uploadArea.classList.add('file-selected');
+                analyzeBtn.disabled = false;
+                
+                const uploadContent = uploadArea.querySelector('.upload-content');
+                uploadContent.innerHTML = `
+                    <div class="upload-icon">✅</div>
+                    <h3>${selectedFile.name}</h3>
+                    <p class="upload-text">${(selectedFile.size / 1024).toFixed(1)} KB</p>
+                    <button class="upload-btn" onclick="event.preventDefault(); document.getElementById('fileInput').click()">
+                        Change File
+                    </button>
+                `;
+            }
+        });
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            if (e.dataTransfer.files.length) {
+                fileInput.files = e.dataTransfer.files;
+                const event = new Event('change');
+                fileInput.dispatchEvent(event);
+            }
+        });
+
+        async function analyzeResume() {
+            if (!selectedFile) {
+                alert('Please select a file first');
+                return;
+            }
+
+            const modal = document.getElementById('resultsModal');
+            const resultsDiv = document.getElementById('analysisResults');
+            
+            resultsDiv.innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <h3>Analyzing your resume...</h3>
+                    <p>This will take just a few seconds</p>
+                </div>
+            `;
+            modal.style.display = 'block';
+
+            analyzeBtn.disabled = true;
+            analyzeBtn.textContent = 'Analyzing...';
+
+            const formData = new FormData();
+            formData.append('resume', selectedFile);
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayResults(data);
+                } else {
+                    resultsDiv.innerHTML = `
+                        <div style="text-align: center; padding: 40px;">
+                            <div style="font-size: 4rem; margin-bottom: 20px;">😕</div>
+                            <h3>Analysis Failed</h3>
+                            <p style="color: #f44336; margin: 20px 0;">${data.error || 'Unknown error occurred'}</p>
+                            <button onclick="closeModal()" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div style="text-align: center; padding: 40px;">
+                        <div style="font-size: 4rem; margin-bottom: 20px;">❌</div>
+                        <h3>Connection Error</h3>
+                        <p style="color: #f44336; margin: 20px 0;">${error.message}</p>
+                        <button onclick="closeModal()" style="padding: 10px 30px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                    </div>
+                `;
+            } finally {
+                analyzeBtn.disabled = false;
+                analyzeBtn.textContent = 'Get My Free Analysis';
+            }
+        }
+
+        function displayResults(data) {
+            const resultsDiv = document.getElementById('analysisResults');
+            
+            // Category scores HTML
+            let categoryScoresHtml = '';
+            if (data.category_scores) {
+                for (let [category, score] of Object.entries(data.category_scores)) {
+                    const categoryName = category.replace('_', ' ').toUpperCase();
+                    categoryScoresHtml += `
+                        <div class="category-item">
+                            <div class="category-header">
+                                <span class="category-name">${categoryName}</span>
+                                <span class="category-percent">${score}%</span>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${score}%"></div>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            // Keywords found HTML
+            let keywordsHtml = '';
+            if (data.found_keywords) {
+                for (let [category, keywords] of Object.entries(data.found_keywords)) {
+                    if (keywords && keywords.length > 0) {
+                        const categoryName = category.replace('_', ' ').toUpperCase();
+                        keywordsHtml += `
+                            <div class="keyword-box">
+                                <h4>${categoryName}</h4>
+                                <div class="keyword-tags">
+                                    ${keywords.slice(0, 15).map(k => `<span class="keyword-tag">${k}</span>`).join('')}
+                                    ${keywords.length > 15 ? `<span class="keyword-tag">+${keywords.length - 15} more</span>` : ''}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+
+            // Recommendations HTML
+            let recommendationsHtml = '';
+            if (data.recommendations && data.recommendations.length > 0) {
+                data.recommendations.forEach(rec => {
+                    const priorityClass = rec.priority === 'Critical' || rec.priority === 'High' ? 'priority-high' : 
+                                         rec.priority === 'Medium' ? 'priority-medium' : 'priority-low';
+                    
+                    recommendationsHtml += `
+                        <div class="recommendation-item ${priorityClass}">
+                            <div class="rec-category">${rec.category} (${rec.priority} Priority)</div>
+                            <div class="rec-message">${rec.message}</div>
+                            <div class="rec-examples">
+                                ${rec.examples.map(ex => `<span class="example-tag">${ex}</span>`).join('')}
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            // Contact info HTML
+            let contactHtml = '';
+            if (data.contact_info) {
+                contactHtml = `
+                    <div class="keyword-box">
+                        <h4>CONTACT INFORMATION</h4>
+                        <div style="margin-bottom: 10px;">
+                            <strong>Email:</strong> ${data.contact_info.email.length ? data.contact_info.email.join(', ') : '❌ Not found'}
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <strong>Phone:</strong> ${data.contact_info.phone.length ? data.contact_info.phone[0] : '❌ Not found'}
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <strong>LinkedIn:</strong> ${data.contact_info.linkedin ? '✅ Found' : '❌ Not found'}
+                        </div>
+                        <div style="margin-bottom: 5px;">
+                            <strong>GitHub:</strong> ${data.contact_info.github ? '✅ Found' : '❌ Not found'}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Rating class
+            const ratingClass = `rating-${data.rating ? data.rating.replace(' ', '') : 'Average'}`;
+
+            resultsDiv.innerHTML = `
+                <div class="results-header">
+                    <h2>Your Resume Analysis Results</h2>
+                    <div class="score-circle">
+                        <span class="score-number">${data.final_score}</span>
+                        <span class="score-label">ATS Score</span>
+                    </div>
+                    <div class="rating-badge ${ratingClass}">
+                        ${data.rating || 'Average'} - ${data.rating_description || ''}
+                    </div>
+                </div>
+
+                <div class="results-grid">
+                    <div class="stat-card">
+                        <span class="stat-value-large">${data.keyword_counts ? data.keyword_counts.total : 0}</span>
+                        <span class="stat-label-small">Keywords Found</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value-large">${data.word_count || 0}</span>
+                        <span class="stat-label-small">Total Words</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-value-large">${data.contact_score || 0}/10</span>
+                        <span class="stat-label-small">Contact Score</span>
+                    </div>
+                </div>
+
+                <div class="category-scores">
+                    <h3 style="margin-bottom: 15px;">📊 Category Performance</h3>
+                    ${categoryScoresHtml}
+                </div>
+
+                <div class="keywords-section">
+                    <h3 style="margin-bottom: 15px;">🔑 Keywords Found</h3>
+                    <div class="keywords-grid">
+                        ${keywordsHtml || '<p>No keywords found. Add more relevant terms.</p>'}
+                    </div>
+                </div>
+
+                <div class="keywords-section">
+                    <h3 style="margin-bottom: 15px;">📞 Contact Information</h3>
+                    <div class="keywords-grid">
+                        ${contactHtml}
+                    </div>
+                </div>
+
+                <div class="recommendations-section">
+                    <h3 style="margin-bottom: 15px;">💡 Recommendations to Improve</h3>
+                    ${recommendationsHtml || '<p>No recommendations available.</p>'}
+                </div>
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 1rem;">Close</button>
+                </div>
+            `;
+        }
+
+        async function checkATS() {
+            try {
+                const response = await fetch('/check_ats');
+                const data = await response.json();
+                
+                let tipsHtml = '';
+                if (data.tips) {
+                    data.tips.forEach(section => {
+                        tipsHtml += `
+                            <div style="margin-bottom: 20px;">
+                                <h4 style="color: #333; margin-bottom: 10px;">${section.title}</h4>
+                                <ul style="list-style: none; padding-left: 0;">
+                                    ${section.items.map(item => `
+                                        <li style="margin-bottom: 8px; padding-left: 20px; position: relative;">
+                                            <span style="position: absolute; left: 0; color: #667eea;">•</span>
+                                            ${item}
+                                        </li>
+                                    `).join('')}
+                                </ul>
+                            </div>
+                        `;
+                    });
+                }
+
+                const modal = document.getElementById('resultsModal');
+                const resultsDiv = document.getElementById('analysisResults');
+                
+                resultsDiv.innerHTML = `
+                    <div class="results-header">
+                        <h2>${data.message || 'Amazon ATS Test Tips'}</h2>
+                    </div>
+                    ${tipsHtml}
+                    <div style="text-align: center; margin-top: 30px;">
+                        <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; cursor: pointer;">Close</button>
+                    </div>
+                `;
+                
+                modal.style.display = 'block';
+                
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('resultsModal').style.display = 'none';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('resultsModal');
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
