@@ -908,6 +908,151 @@
         xhr.send();
     }
 
+    // ============================================
+    // NEW: displayResults FUNCTION - Results show karva mate
+    // ============================================
+    function displayResults(data) {
+        const resultsDiv = document.getElementById('analysisResults');
+        
+        // Category scores HTML
+        let categoryScoresHtml = '';
+        if (data.category_scores) {
+            for (let [category, score] of Object.entries(data.category_scores)) {
+                const categoryName = category.replace('_', ' ').toUpperCase();
+                categoryScoresHtml += `
+                    <div class="category-item">
+                        <div class="category-header">
+                            <span class="category-name">${categoryName}</span>
+                            <span class="category-percent">${score}%</span>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${score}%"></div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // Keywords found HTML
+        let keywordsHtml = '';
+        if (data.found_keywords) {
+            for (let [category, keywords] of Object.entries(data.found_keywords)) {
+                if (keywords && keywords.length > 0) {
+                    const categoryName = category.replace('_', ' ').toUpperCase();
+                    keywordsHtml += `
+                        <div class="keyword-box">
+                            <h4>${categoryName}</h4>
+                            <div class="keyword-tags">
+                                ${keywords.slice(0, 15).map(k => `<span class="keyword-tag">${k}</span>`).join('')}
+                                ${keywords.length > 15 ? `<span class="keyword-tag">+${keywords.length - 15} more</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // Recommendations HTML
+        let recommendationsHtml = '';
+        if (data.recommendations && data.recommendations.length > 0) {
+            data.recommendations.forEach(rec => {
+                const priorityClass = rec.priority === 'Critical' || rec.priority === 'High' ? 'priority-high' : 
+                                    rec.priority === 'Medium' ? 'priority-medium' : 'priority-low';
+                
+                recommendationsHtml += `
+                    <div class="recommendation-item ${priorityClass}">
+                        <div class="rec-category">${rec.category} (${rec.priority} Priority)</div>
+                        <div class="rec-message">${rec.message}</div>
+                        <div class="rec-examples">
+                            ${rec.examples.map(ex => `<span class="example-tag">${ex}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Contact info HTML
+        let contactHtml = '';
+        if (data.contact_info) {
+            contactHtml = `
+                <div class="keyword-box">
+                    <h4>CONTACT INFORMATION</h4>
+                    <div style="margin-bottom: 10px;">
+                        <strong>Email:</strong> ${data.contact_info.email.length ? data.contact_info.email.join(', ') : '❌ Not found'}
+                    </div>
+                    <div style="margin-bottom: 5px;">
+                        <strong>Phone:</strong> ${data.contact_info.phone.length ? data.contact_info.phone[0] : '❌ Not found'}
+                    </div>
+                    <div style="margin-bottom: 5px;">
+                        <strong>LinkedIn:</strong> ${data.contact_info.linkedin ? '✅ Found' : '❌ Not found'}
+                    </div>
+                    <div style="margin-bottom: 5px;">
+                        <strong>GitHub:</strong> ${data.contact_info.github ? '✅ Found' : '❌ Not found'}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Rating class
+        const ratingClass = `rating-${data.rating ? data.rating.replace(' ', '') : 'Average'}`;
+
+        resultsDiv.innerHTML = `
+            <div class="results-header">
+                <h2>Your Resume Analysis Results</h2>
+                <div class="score-circle">
+                    <span class="score-number">${data.final_score}</span>
+                    <span class="score-label">ATS Score</span>
+                </div>
+                <div class="rating-badge ${ratingClass}">
+                    ${data.rating || 'Average'} - ${data.rating_description || ''}
+                </div>
+            </div>
+
+            <div class="results-grid">
+                <div class="stat-card">
+                    <span class="stat-value-large">${data.keyword_counts ? data.keyword_counts.total : 0}</span>
+                    <span class="stat-label-small">Keywords Found</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value-large">${data.word_count || 0}</span>
+                    <span class="stat-label-small">Total Words</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value-large">${data.contact_score || 0}/10</span>
+                    <span class="stat-label-small">Contact Score</span>
+                </div>
+            </div>
+
+            <div class="category-scores">
+                <h3 style="margin-bottom: 15px;">📊 Category Performance</h3>
+                ${categoryScoresHtml}
+            </div>
+
+            <div class="keywords-section">
+                <h3 style="margin-bottom: 15px;">🔑 Keywords Found</h3>
+                <div class="keywords-grid">
+                    ${keywordsHtml || '<p>No keywords found. Add more relevant terms.</p>'}
+                </div>
+            </div>
+
+            <div class="keywords-section">
+                <h3 style="margin-bottom: 15px;">📞 Contact Information</h3>
+                <div class="keywords-grid">
+                    ${contactHtml}
+                </div>
+            </div>
+
+            <div class="recommendations-section">
+                <h3 style="margin-bottom: 15px;">💡 Recommendations to Improve</h3>
+                ${recommendationsHtml || '<p>No recommendations available.</p>'}
+            </div>
+
+            <div style="text-align: center; margin-top: 30px;">
+                <button onclick="closeModal()" style="padding: 12px 40px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 1rem;">Close</button>
+            </div>
+        `;
+    }
+
     // Start health check when page loads
     window.addEventListener('load', checkServerHealth);
 
@@ -933,6 +1078,26 @@
                     Change File
                 </button>
             `;
+        }
+    });
+
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('dragover');
+    });
+
+    uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('dragover');
+    });
+
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('dragover');
+        
+        if (e.dataTransfer.files.length) {
+            fileInput.files = e.dataTransfer.files;
+            const event = new Event('change');
+            fileInput.dispatchEvent(event);
         }
     });
 
